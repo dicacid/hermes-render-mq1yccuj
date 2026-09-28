@@ -10,7 +10,7 @@ execSync("git clone --depth 1 https://github.com/fathah/hermes-desktop.git exact
 
 const shim = `
 const backendUrl = "https://hermes-one-browser.onrender.com";
-const bridgeWsUrl = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/hermes-ws`;
+const bridgeWsUrl = (location.protocol === "https:" ? "wss:" : "ws:") + "//" + location.host + "/hermes-ws";
 const dashboardStatus = () => ({
   supported:true,
   running:true,
