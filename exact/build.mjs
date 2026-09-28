@@ -10,6 +10,19 @@ execSync("git clone --depth 1 https://github.com/fathah/hermes-desktop.git exact
 
 const shim = `
 const backendUrl = "https://hermes-one-browser.onrender.com";
+const bridgeWsUrl = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/hermes-ws`;
+const dashboardStatus = () => ({
+  supported:true,
+  running:true,
+  connection:{
+    baseUrl:location.origin,
+    wsUrl:bridgeWsUrl,
+    token:"",
+    authMode:"oauth",
+    mode:"remote",
+    profile:"default"
+  }
+});
 const safeProfile = {
   id:"default", name:"nick", path:"/remote/default", isDefault:true, isActive:true,
   model:"", provider:"auto", hasEnv:true, hasSoul:true, skillCount:0,
@@ -30,13 +43,15 @@ window.addEventListener("unhandledrejection", e => report("unhandledrejection", 
 setTimeout(() => report("state", {title:document.title, text:(document.body?.innerText||"").slice(0,3000), html:(document.getElementById("root")?.innerHTML||"").slice(0,3000)}), 5000);
 
 function defaultValue(name){
-  if (name === "getConnectionConfig") return { mode:"remote", remoteUrl:backendUrl, connectionId:"render-hermes-one", remoteAuthMode:"basic", remoteChatTransport:"dashboard" };
+  if (name === "getConnectionConfig") return { mode:"remote", remoteUrl:location.origin, connectionId:"render-hermes-one", remoteAuthMode:"oauth", remoteChatTransport:"dashboard" };
   if (name === "testRemoteConnection") return true;
-  if (name === "probeRemoteAuthMode") return { authMode:"basic" };
+  if (name === "probeRemoteAuthMode") return { authMode:"oauth" };
   if (name === "checkInstall") return { installed:true, hasApiKey:true, activeProfile:"default" };
   if (name === "verifyInstall") return true;
   if (name === "getConfigHealth") return { healthy:true, issues:[] };
   if (name === "gatewayStatus") return true;
+  if (name === "dashboardStatus" || name === "startDashboard") return dashboardStatus();
+  if (name === "freshDashboardWsUrl") return bridgeWsUrl;
   if (name === "listProfiles") return [safeProfile];
   if (name === "getActiveProfile") return "default";
   if (name === "getProfile") return safeProfile;
@@ -74,6 +89,13 @@ const api = new Proxy({}, {
 
 Object.defineProperty(window, "hermesAPI", { value: api, configurable: true });
 Object.defineProperty(window, "electron", { value: { process:{ platform:"linux" } }, configurable: true });
+fetch("/api/auth/me", {credentials:"same-origin"})
+  .then(r => {
+    if (r.status === 401 && location.pathname !== "/login") {
+      location.replace("/login?next=/");
+    }
+  })
+  .catch(() => {});
 report("shim-ready");
 `;
 fs.writeFileSync(path.join(src, "src/renderer/src/web-shim.ts"), shim);
