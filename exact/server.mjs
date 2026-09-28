@@ -80,6 +80,45 @@ app.get("/bridge-health", async (req,res)=>{
   }
 });
 
+
+async function configuredAuthCookie(){
+  const username=process.env.HERMES_BACKEND_USERNAME || "";
+  const password=process.env.HERMES_BACKEND_PASSWORD || "";
+  if(!username || !password) throw new Error("bridge self-test credentials are not configured");
+  const response=await fetch(BACKEND+"/auth/password-login",{
+    method:"POST",
+    headers:{"content-type":"application/json"},
+    body:JSON.stringify({provider:"basic",username,password,next:"/"})
+  });
+  if(!response.ok) throw new Error("password-login "+response.status+": "+(await response.text()).slice(0,200));
+  const cookies=cookiePairs(cookieHeaderFromResponse(response));
+  if(!cookies) throw new Error("password-login returned no session cookies");
+  return cookies;
+}
+async function bridgeRpcSelfTest(){
+  const cookie=await configuredAuthCookie();
+  const ticket=await mintWsTicket(cookie);
+  const url=new URL("/api/ws",BACKEND);
+  url.protocol=url.protocol==="https:"?"wss:":"ws:";
+  url.searchParams.set("ticket",ticket);
+  return await new Promise((resolve,reject)=>{
+    const ws=new WebSocket(url.toString());
+    const timer=setTimeout(()=>{try{ws.close();}catch{};reject(new Error("RPC self-test timed out"));},10000);
+    ws.on("open",()=>ws.send(JSON.stringify({jsonrpc:"2.0",id:"bridge-test",method:"commands.catalog",params:{}})));
+    ws.on("message",(data)=>{
+      try{
+        const msg=JSON.parse(String(data));
+        if(msg?.id!=="bridge-test") return;
+        clearTimeout(timer);
+        try{ws.close();}catch{}
+        if(msg.error) reject(new Error("commands.catalog: "+JSON.stringify(msg.error)));
+        else resolve(msg.result);
+      }catch{}
+    });
+    ws.on("error",(e)=>{clearTimeout(timer);reject(e);});
+  });
+}
+
 app.use(express.static(renderer));
 app.use((_req,res)=>res.sendFile(path.join(renderer,"index.html")));
 
@@ -135,4 +174,9 @@ server.on("upgrade", async (req,socket,head)=>{
 });
 
 const port=process.env.PORT||10000;
-server.listen(port,"0.0.0.0",()=>console.log("HERMES_ONE_EXACT_WEB_READY port="+port));
+server.listen(port,"0.0.0.0",()=>{
+  console.log("HERMES_ONE_EXACT_WEB_READY port="+port);
+  bridgeRpcSelfTest()
+    .then(result=>console.log("HERMES_ONE_BRIDGE_SELF_TEST_OK", JSON.stringify({catalogType:typeof result,keys:result&&typeof result==="object"?Object.keys(result).slice(0,12):[]})))
+    .catch(error=>console.error("HERMES_ONE_BRIDGE_SELF_TEST_FAIL",String(error?.stack||error)));
+});
