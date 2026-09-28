@@ -6,5 +6,8 @@
     "build":"node exact/build.mjs",
     "start":"node exact/server.mjs"
   },
-  "dependencies":{"express":"^5.1.0"}
+  "dependencies":{
+    "express":"^5.1.0",
+    "ws":"^8.18.3"
+  }
 }
