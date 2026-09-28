@@ -41,6 +41,8 @@ function defaultValue(name){
   if (name === "getActiveProfile") return "default";
   if (name === "getProfile") return safeProfile;
   if (name === "getConnectionRevision") return 1;
+  if (name === "getLocale") return "en";
+  if (name === "setLocale") return "en";
   if (name === "getVersion" || name === "getHermesVersion") return "web";
   if (name === "getModelConfig") return { provider:"auto", model:"", baseUrl:"" };
   if (name === "discoverProviderModels") return { models:[], cached:false, status:"unsupported", freeModels:[] };
