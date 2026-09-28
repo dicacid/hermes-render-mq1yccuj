@@ -10,24 +10,56 @@ execSync("git clone --depth 1 https://github.com/fathah/hermes-desktop.git exact
 
 const shim = `
 const backendUrl = "https://hermes-one-browser.onrender.com";
-const safeProfile = { id:"default", name:"default", displayName:"nick", color:"#6b7280", avatar:null };
+const safeProfile = {
+  id:"default", name:"nick", path:"/remote/default", isDefault:true, isActive:true,
+  model:"", provider:"auto", hasEnv:true, hasSoul:true, skillCount:0,
+  gatewayRunning:true, color:"#6b7280", avatar:null
+};
+
+const report = (type, payload={}) => {
+  try {
+    fetch("/client-log", {
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({type,payload,href:location.href,ua:navigator.userAgent,ts:Date.now()})
+    }).catch(()=>{});
+  } catch {}
+};
+window.addEventListener("error", e => report("error", {message:e.message, stack:e.error?.stack, source:e.filename, line:e.lineno, col:e.colno}));
+window.addEventListener("unhandledrejection", e => report("unhandledrejection", {reason:String(e.reason), stack:e.reason?.stack}));
+setTimeout(() => report("state", {title:document.title, text:(document.body?.innerText||"").slice(0,3000), html:(document.getElementById("root")?.innerHTML||"").slice(0,3000)}), 5000);
 
 function defaultValue(name){
-  if (name === "getConnectionConfig") return { mode:"remote", remoteUrl:backendUrl, connectionId:"render-hermes-one" };
+  if (name === "getConnectionConfig") return { mode:"remote", remoteUrl:backendUrl, connectionId:"render-hermes-one", remoteAuthMode:"basic", remoteChatTransport:"dashboard" };
   if (name === "testRemoteConnection") return true;
+  if (name === "probeRemoteAuthMode") return { authMode:"basic" };
   if (name === "checkInstall") return { installed:true, hasApiKey:true, activeProfile:"default" };
   if (name === "verifyInstall") return true;
   if (name === "getConfigHealth") return { healthy:true, issues:[] };
-  if (name === "gatewayStatus") return { running:true, enabled:true };
+  if (name === "gatewayStatus") return true;
   if (name === "listProfiles") return [safeProfile];
   if (name === "getActiveProfile") return "default";
   if (name === "getProfile") return safeProfile;
   if (name === "getConnectionRevision") return 1;
-  if (name === "getVersion") return "web";
-  if (name.startsWith("list") || name.startsWith("search")) return [];
+  if (name === "getVersion" || name === "getHermesVersion") return "web";
+  if (name === "getModelConfig") return { provider:"auto", model:"", baseUrl:"" };
+  if (name === "discoverProviderModels") return { models:[], cached:false, status:"unsupported", freeModels:[] };
+  if (name === "validateChatReadiness") return { ok:true };
+  if (name === "getSpellCheckerInfo") return { available:[], system:[], selected:[] };
+  if (name === "getModelContextWindow") return null;
+  if (name === "getConfig") return null;
+  if (name === "getSessionContextFolder" || name === "getSessionModelOverride") return null;
+  if (name === "getHermesHome") return "/remote";
+  if (name === "readSoul") return "";
+  if (name === "readMemory") return { memory:{content:"",exists:false,lastModified:null}, user:{content:"",exists:false,lastModified:null}, stats:{totalSessions:0,totalMessages:0} };
+  if (name === "getCredentialPool") return {};
+  if (name === "getPlatformEnabled") return {};
+  if (name === "getToolsets") return [];
+  if (name.startsWith("list") || name.startsWith("search") || name.startsWith("discover")) return [];
   if (name.startsWith("get")) return {};
   if (name.startsWith("check") || name.startsWith("test") || name.startsWith("verify")) return true;
-  return true;
+  if (name.startsWith("set") || name.startsWith("record") || name.startsWith("write") || name.startsWith("remove") || name.startsWith("restart") || name.startsWith("start") || name.startsWith("stop")) return true;
+  return {};
 }
 
 const api = new Proxy({}, {
@@ -40,6 +72,7 @@ const api = new Proxy({}, {
 
 Object.defineProperty(window, "hermesAPI", { value: api, configurable: true });
 Object.defineProperty(window, "electron", { value: { process:{ platform:"linux" } }, configurable: true });
+report("shim-ready");
 `;
 fs.writeFileSync(path.join(src, "src/renderer/src/web-shim.ts"), shim);
 
