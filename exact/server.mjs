@@ -38,7 +38,7 @@ async function proxyFetch(req, res, backendPath){
     const upstream = await fetch(BACKEND + backendPath, init);
     const body = Buffer.from(await upstream.arrayBuffer());
     const setCookies = cookieHeaderFromResponse(upstream);
-    for(const c of setCookies) res.append("Set-Cookie", c);
+    for(const c of setCookies) res.append("Set-Cookie", String(c).replace(/;\\s*Domain=[^;]+/ig,""));
     const ct=upstream.headers.get("content-type"); if(ct) res.set("Content-Type",ct);
     const location=upstream.headers.get("location"); if(location) res.set("Location", location);
     res.status(upstream.status).send(body);
@@ -50,7 +50,35 @@ async function proxyFetch(req, res, backendPath){
 
 // Preserve the upstream Hermes auth flow on this origin. Backend cookies are
 // re-issued by this server, so the browser never sees or stores backend secrets.
-app.get("/login", (req,res)=>proxyFetch(req,res,"/login"+(req.url.includes("?")?req.url.slice(req.url.indexOf("?")):"")));
+app.get("/login", (_req,res)=>res.type("html").send(`<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in — Hermes One</title>
+<style>
+:root{font-family:Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#ececec;background:#0d0f14}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:
+radial-gradient(900px 500px at 50% -10%,rgba(71,97,180,.18),transparent 65%),#0d0f14}
+.card{width:min(420px,calc(100vw - 32px));background:#141720;border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:32px;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:28px;font-weight:700;letter-spacing:-.03em}
+.mark{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(255,255,255,.14);background:#0a0b0f;font-size:12px}
+.brand span{color:#f0f1f5}.brand b{color:#8c93a6;margin-left:4px}h1{font-size:24px;margin:0 0 7px}p{margin:0 0 24px;color:#8e95a8;font-size:13px;line-height:1.5}
+label{display:block;font-size:12px;color:#aeb4c3;margin:0 0 7px}input{width:100%;height:43px;border-radius:8px;border:1px solid #303542;background:#0c0e13;color:#f0f1f5;padding:0 12px;outline:none;margin-bottom:16px}
+input:focus{border-color:#526fbf;box-shadow:0 0 0 3px rgba(82,111,191,.12)}
+button{width:100%;height:43px;border:0;border-radius:8px;background:#e9ebf2;color:#11151d;font-weight:700;cursor:pointer;margin-top:4px}
+button:disabled{opacity:.55;cursor:default}.error{display:none;margin:14px 0 0;color:#ef8f96;font-size:12px}.foot{margin-top:20px;text-align:center;color:#626a7d;font-size:11px}
+</style></head><body><main class="card">
+<div class="brand"><div class="mark">H1</div><div><span>HERMES</span><b>ONE</b></div></div>
+<h1>Sign in</h1><p>Connect to your Hermes One workspace.</p>
+<form id="f"><label for="u">Username</label><input id="u" autocomplete="username" required>
+<label for="p">Password</label><input id="p" type="password" autocomplete="current-password" required>
+<button id="b" type="submit">Sign in</button><div class="error" id="e"></div></form>
+<div class="foot">Secure remote gateway · authentication required</div>
+</main><script>
+const f=document.getElementById("f"),b=document.getElementById("b"),e=document.getElementById("e");
+f.addEventListener("submit",async ev=>{ev.preventDefault();b.disabled=true;e.style.display="none";
+try{const r=await fetch("/auth/password-login",{method:"POST",headers:{"content-type":"application/json"},credentials:"same-origin",body:JSON.stringify({provider:"basic",username:document.getElementById("u").value,password:document.getElementById("p").value,next:"/"})});
+const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||"Sign-in failed");location.replace(j.next||"/");}
+catch(err){e.textContent=err.message||"Sign-in failed";e.style.display="block";b.disabled=false;}});
+</script></body></html>`));
 app.get("/api/auth/providers", (req,res)=>proxyFetch(req,res,"/api/auth/providers"));
 app.get("/api/auth/me", (req,res)=>proxyFetch(req,res,"/api/auth/me"));
 app.post("/auth/password-login", (req,res)=>proxyFetch(req,res,"/auth/password-login"));
@@ -174,9 +202,4 @@ server.on("upgrade", async (req,socket,head)=>{
 });
 
 const port=process.env.PORT||10000;
-server.listen(port,"0.0.0.0",()=>{
-  console.log("HERMES_ONE_EXACT_WEB_READY port="+port);
-  bridgeRpcSelfTest()
-    .then(result=>console.log("HERMES_ONE_BRIDGE_SELF_TEST_OK", JSON.stringify({catalogType:typeof result,keys:result&&typeof result==="object"?Object.keys(result).slice(0,12):[]})))
-    .catch(error=>console.error("HERMES_ONE_BRIDGE_SELF_TEST_FAIL",String(error?.stack||error)));
-});
+server.listen(port,"0.0.0.0",()=>console.log("HERMES_ONE_EXACT_WEB_READY port="+port));
